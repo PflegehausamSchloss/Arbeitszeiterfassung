@@ -722,9 +722,9 @@ input::placeholder{color:var(--muted2);}
 <!-- SOLL MODAL -->
 <div class="modal-overlay" id="sollModal">
   <div class="modal">
-    <div class="modal-title">Stunden-Soll ändern <button class="modal-close" onclick="closeSollModal()">×</button></div>
+    <div class="modal-title">Mitarbeiterdaten bearbeiten <button class="modal-close" onclick="closeSollModal()">×</button></div>
     <div class="modal-fields">
-      <div><div class="form-label">Mitarbeiter</div><input type="text" id="sollModalName" readonly style="background:#f9fafb;color:#6b7280;"></div>
+      <div><div class="form-label">Name</div><input type="text" id="sollModalName" placeholder="Vor- und Nachname"></div>
       <div><div class="form-label">Soll-Stunden pro Monat</div><input type="number" id="sollModalVal" min="0" max="400" placeholder="z.B. 160"></div>
       <div><div class="form-label">Qualifikation</div><select id="sollModalQual"><option value="Pflegefachkraft">Pflegefachkraft</option><option value="Altenpflegehelfer">Altenpflegehelfer</option><option value="Pflegehelfer">Pflegehelfer</option><option value="Alltagsbegleiter">Alltagsbegleiter</option><option value="Auszubildender">Auszubildender</option></select></div>
       <div style="background:var(--green-light);border:1.5px solid #86efac;border-radius:10px;padding:10px 12px;font-size:12px;color:var(--accent);">
@@ -1417,7 +1417,7 @@ async function loadMitarbeiterList(){
       <div class="ma-avatar${m.aktiv?'':' inactive'}">${ini}</div>
       <div class="ma-info"><div class="ma-name">${m.name}${!m.aktiv?'<span class="ma-inactive-badge">Inaktiv</span>':''}</div><div class="ma-meta">PIN: ${m.pin} · ${m.qualifikation||'–'} · Soll: ${m.soll_stunden||160}h/Mo</div></div>
       <div class="ma-actions">
-        <button class="btn-pin" onclick="openSollModal('${m.id}','${m.name}',${m.soll_stunden||160},'${m.qualifikation||'Pflegehelfer'}')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Soll</button>
+        <button class="btn-pin" onclick="openSollModal('${m.id}','${m.name}',${m.soll_stunden||160},'${m.qualifikation||'Pflegehelfer'}')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daten</button>
         <button class="btn-pin" onclick="openPinModal('${m.id}','${m.name}')"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>PIN</button>
         <button class="btn-toggle${m.aktiv?'':' reactivate'}" onclick="toggleMA('${m.id}',${m.aktiv})"><svg viewBox="0 0 24 24">${m.aktiv?'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>':'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>'}</svg>${m.aktiv?'Deakt.':'Aktiv.'}</button>
       </div></div>`;
@@ -1448,14 +1448,17 @@ function openSollModal(id,name,soll,qual){
 }
 function closeSollModal(){document.getElementById('sollModal').classList.remove('open');editingSollId=null;}
 async function saveSoll(){
+  const name=document.getElementById('sollModalName').value.trim();
   const soll=parseFloat(document.getElementById('sollModalVal').value);
   const qual=document.getElementById('sollModalQual').value;
+  if(!name){toast('⚠️ Name darf nicht leer sein');return;}
   if(!soll||soll<=0){toast('⚠️ Bitte gültigen Wert eingeben');return;}
-  const{error}=await sbAdmin.from('mitarbeiter').update({soll_stunden:soll,qualifikation:qual}).eq('id',editingSollId);
+  const{error}=await sbAdmin.from('mitarbeiter').update({name,soll_stunden:soll,qualifikation:qual}).eq('id',editingSollId);
   if(error){toast('⚠️ Fehler beim Speichern');return;}
   closeSollModal();toast('✓ Gespeichert');
   const{data}=await sb.from('mitarbeiter').select('*').eq('aktiv',true).order('name');
   if(data)employees=data;
+  buildUserTabs();
   await loadMitarbeiterList();
 }
 
