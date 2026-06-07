@@ -951,18 +951,19 @@ function togglePwVisible(){
 }
 
 async function checkAdminPw(){
-  const pw=document.getElementById('adminPwInput').value; // kein trim() – Sonderzeichen erhalten
+  const pw=document.getElementById('adminPwInput').value;
   if(!pw){document.getElementById('pinErr').textContent='Bitte Passwort eingeben.';return;}
+  if(!selEmployee){document.getElementById('pinErr').textContent='Bitte Benutzer wählen.';return;}
   try{
-    // Alle aktiven Admins laden und lokal vergleichen
-    const{data,error}=await sbAdmin.from('mitarbeiter').select('id,name,pin,rolle,soll_stunden,qualifikation,aktiv,stundenkonto').eq('aktiv',true).in('rolle',['admin','verwaltung']);
+    // Nur den AUSGEWÄHLTEN Benutzer prüfen
+    const{data,error}=await sbAdmin.from('mitarbeiter').select('id,name,pin,rolle,soll_stunden,qualifikation,aktiv,stundenkonto').eq('aktiv',true).eq('id',selEmployee.id);
     if(error||!data||data.length===0){
-      document.getElementById('pinErr').textContent='Fehler beim Laden – bitte Netlify neu laden.';
+      document.getElementById('pinErr').textContent='Fehler beim Laden.';
       return;
     }
-    const match=data.find(m=>m.pin===pw);
-    if(match){
-      selEmployee=match;
+    const user=data[0];
+    if(pw===user.pin){
+      selEmployee=user;
       await loginUser();
     } else {
       document.getElementById('adminPwInput').value='';
