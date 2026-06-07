@@ -792,12 +792,23 @@ const sbAdmin={
       if(!r.ok){const e=await r.json();return{error:e};}
       return{error:null};
     },
-    async update(data){
+    update(data){
+      this._updateData=data;
+      // Gibt das Objekt selbst zurück mit then für await-Unterstützung
+      const self=this;
+      return{
+        eq(col,val){self._filters.push({type:'eq',col,val});return this;},
+        then(resolve,reject){
+          return self._runUpdate().then(resolve,reject);
+        }
+      };
+    },
+    async _runUpdate(){
       let url=`${SUPA_URL}/rest/v1/${this._table}?`;
       this._filters.forEach(f=>{
         if(f.type==='eq')url+=`${f.col}=eq.${encodeURIComponent(f.val)}&`;
       });
-      const r=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json','apikey':SUPA_SERVICE,'Authorization':'Bearer '+SUPA_SERVICE,'Prefer':'return=minimal'},body:JSON.stringify(data)});
+      const r=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json','apikey':SUPA_SERVICE,'Authorization':'Bearer '+SUPA_SERVICE,'Prefer':'return=minimal'},body:JSON.stringify(this._updateData)});
       if(!r.ok){const e=await r.json();return{error:e};}
       return{error:null};
     },
@@ -809,7 +820,14 @@ const sbAdmin={
       if(!r.ok){const e=await r.json();return{error:e};}
       return{error:null};
     },
-    async delete(){
+    delete(){
+      const self=this;
+      return{
+        eq(col,val){self._filters.push({type:'eq',col,val});return this;},
+        then(resolve,reject){return self._runDelete().then(resolve,reject);}
+      };
+    },
+    async _runDelete(){
       let url=`${SUPA_URL}/rest/v1/${this._table}?`;
       this._filters.forEach(f=>{
         if(f.type==='eq')url+=`${f.col}=eq.${encodeURIComponent(f.val)}&`;
@@ -1472,18 +1490,24 @@ function openSollModal(id,name,soll,qual){
 }
 function closeSollModal(){document.getElementById('sollModal').classList.remove('open');editingSollId=null;}
 async function saveSoll(){
-  const name=document.getElementById('sollModalName').value.trim();
-  const soll=parseFloat(document.getElementById('sollModalVal').value);
-  const qual=document.getElementById('sollModalQual').value;
-  if(!name){toast('⚠️ Name darf nicht leer sein');return;}
-  if(!soll||soll<=0){toast('⚠️ Bitte gültigen Wert eingeben');return;}
-  const{error}=await sbAdmin.from('mitarbeiter').update({name,soll_stunden:soll,qualifikation:qual}).eq('id',editingSollId);
-  if(error){toast('⚠️ Fehler beim Speichern');return;}
-  closeSollModal();toast('✓ Gespeichert');
-  const{data}=await sb.from('mitarbeiter').select('*').eq('aktiv',true).order('name');
-  if(data)employees=data;
-  buildUserTabs();
-  await loadMitarbeiterList();
+  try{
+    const name=document.getElementById('sollModalName').value.trim();
+    const soll=parseFloat(document.getElementById('sollModalVal').value);
+    const qual=document.getElementById('sollModalQual').value;
+    if(!name){toast('⚠️ Name darf nicht leer sein');return;}
+    if(!soll||soll<=0){toast('⚠️ Bitte gültigen Wert eingeben');return;}
+    if(!editingSollId){toast('⚠️ Keine Mitarbeiter-ID');return;}
+    const result=await sbAdmin.from('mitarbeiter').update({name:name,soll_stunden:soll,qualifikation:qual}).eq('id',editingSollId);
+    if(result&&result.error){toast('⚠️ Fehler: '+(result.error.message||JSON.stringify(result.error)));console.error('Update Fehler:',result.error);return;}
+    closeSollModal();toast('✓ Gespeichert');
+    const refresh=await sb.from('mitarbeiter').select('*').eq('aktiv',true).order('name');
+    if(refresh&&refresh.data)employees=refresh.data;
+    buildUserTabs();
+    await loadMitarbeiterList();
+  } catch(e){
+    toast('⚠️ Fehler: '+e.message);
+    console.error('saveSoll Fehler:',e);
+  }
 }
 
 function openPinModal(id,name){editingMaId=id;document.getElementById('pinModalName').value=name;document.getElementById('pinModalNew').value='';document.getElementById('pinModal').classList.add('open');}
