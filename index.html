@@ -733,7 +733,7 @@ input::placeholder{color:var(--muted2);}
     </div>
     <div class="modal-btns">
       <button class="btn btn-outline" onclick="closeSollModal()" style="flex:1">Abbrechen</button>
-      <button class="btn btn-accent" onclick="saveSoll()" style="flex:2"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Soll speichern</button>
+      <button class="btn btn-accent" onclick="saveSoll()" style="flex:2"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Daten speichern</button>
     </div>
   </div>
 </div>
@@ -1407,21 +1407,33 @@ async function deleteEntry(id){if(!confirm('Eintrag wirklich löschen?'))return;
 
 // MITARBEITER
 async function loadMitarbeiterList(){
-  const{data}=await sbAdmin.from('mitarbeiter').select('*').order('name');
+  const{data}=await sbAdmin.from('mitarbeiter').select('*').order('aktiv',{ascending:false}).order('name');
   const el=document.getElementById('maList');
   if(!data||!data.length){el.innerHTML='<div class="empty">Keine Mitarbeiter.</div>';return;}
-  document.getElementById('maCount').textContent=`(${data.filter(m=>m.aktiv).length} aktiv, ${data.filter(m=>!m.aktiv).length} inaktiv)`;
-  el.innerHTML=data.map(m=>{
+  const aktive=data.filter(m=>m.aktiv);
+  const inaktive=data.filter(m=>!m.aktiv);
+  document.getElementById('maCount').textContent=`(${aktive.length} aktiv, ${inaktive.length} inaktiv)`;
+  const renderMa=m=>{
     const ini=m.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     return `<div class="ma-card">
       <div class="ma-avatar${m.aktiv?'':' inactive'}">${ini}</div>
       <div class="ma-info"><div class="ma-name">${m.name}${!m.aktiv?'<span class="ma-inactive-badge">Inaktiv</span>':''}</div><div class="ma-meta">PIN: ${m.pin} · ${m.qualifikation||'–'} · Soll: ${m.soll_stunden||160}h/Mo</div></div>
       <div class="ma-actions">
-        <button class="btn-pin" onclick="openSollModal('${m.id}','${m.name}',${m.soll_stunden||160},'${m.qualifikation||'Pflegehelfer'}')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daten</button>
+        <button class="btn-pin" onclick="openSollModalById('${m.id}')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daten</button>
         <button class="btn-pin" onclick="openPinModal('${m.id}','${m.name}')"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>PIN</button>
-        <button class="btn-toggle${m.aktiv?'':' reactivate'}" onclick="toggleMA('${m.id}',${m.aktiv})"><svg viewBox="0 0 24 24">${m.aktiv?'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>':'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>'}</svg>${m.aktiv?'Deakt.':'Aktiv.'}</button>
+        <button class="btn-toggle${m.aktiv?'':' reactivate'}" onclick="toggleMA('${m.id}',${m.aktiv})"><svg viewBox="0 0 24 24">${m.aktiv?'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>':'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>'}</svg>${m.aktiv?'Deakt.':'Reaktivieren'}</button>
       </div></div>`;
-  }).join('');
+  };
+  let html='';
+  if(aktive.length>0){
+    html+=`<div class="sec-head" style="margin-top:4px;">Aktive Mitarbeiter (${aktive.length})</div>`;
+    html+=aktive.map(renderMa).join('');
+  }
+  if(inaktive.length>0){
+    html+=`<div class="sec-head" style="margin-top:12px;color:var(--red);">Inaktive Mitarbeiter (${inaktive.length})</div>`;
+    html+=inaktive.map(renderMa).join('');
+  }
+  el.innerHTML=html;
 }
 
 async function addMitarbeiter(){
@@ -1437,6 +1449,18 @@ async function addMitarbeiter(){
   const{data}=await sbAdmin.from('mitarbeiter').select('*').eq('aktiv',true).order('name');
   if(data)employees=data;
   buildUserTabs();buildAdminSelects();await loadMitarbeiterList();
+}
+
+async function openSollModalById(id){
+  // Frische Daten direkt aus DB laden
+  const{data}=await sbAdmin.from('mitarbeiter').select('*').eq('id',id);
+  if(!data||!data.length){toast('⚠️ Mitarbeiter nicht gefunden');return;}
+  const m=data[0];
+  editingSollId=id;
+  document.getElementById('sollModalName').value=m.name||'';
+  document.getElementById('sollModalVal').value=m.soll_stunden||160;
+  document.getElementById('sollModalQual').value=m.qualifikation||'Pflegehelfer';
+  document.getElementById('sollModal').classList.add('open');
 }
 
 function openSollModal(id,name,soll,qual){
