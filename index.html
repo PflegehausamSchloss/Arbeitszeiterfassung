@@ -982,6 +982,7 @@ async function checkAdminPw(){
     const user=data[0];
     if(pw===user.pin){
       selEmployee=user;
+      await gesichtsPruefung(selEmployee);
       await loginUser();
     } else {
       document.getElementById('adminPwInput').value='';
@@ -995,7 +996,7 @@ async function checkAdminPw(){
 
 async function checkPin(){
   if(!selEmployee)return;
-  if(pinBuf===selEmployee.pin){await loginUser();}
+  if(pinBuf===selEmployee.pin){await gesichtsPruefung(selEmployee);await loginUser();}
   else{for(let i=0;i<4;i++)document.getElementById('d'+i).classList.add('err');document.getElementById('pinErr').textContent='Falscher PIN – bitte erneut versuchen.';pinBuf='';setTimeout(updateDots,600);}
 }
 
