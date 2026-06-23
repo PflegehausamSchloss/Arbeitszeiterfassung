@@ -1956,8 +1956,107 @@ async function toggleGeraet(id,aktiv){
   await sbAdmin.from('geraete').update({aktiv:!aktiv}).eq('id',id);
   toast(aktiv?'✓ Gerät gesperrt':'✓ Gerät freigeschaltet');await loadGeraete();
 }
+// ============================================================
+// GESICHTSERKENNUNG
+// ============================================================
+const FACE_MODELS_URL='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const AEHNLICHKEIT_SCHWELLE=0.55;
+let faceModelsGeladen=false;
 
-// UTILS
+async function ladeFaceModels(){
+  if(faceModelsGeladen)return true;
+  try{
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS_URL);
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODELS_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL);
+    faceModelsGeladen=true;
+    return true;
+  }catch(e){console.warn('face-api Modelle Fehler:',e);return false;}
+}
+
+async function gesichtsPruefung(mitarbeiter){
+  if(!mitarbeiter.referenzfoto_pfad)return true;
+  if(typeof faceapi==='undefined')return true;
+  const ok=await ladeFaceModels();
+  if(!ok)return true;
+  try{
+    const{data:refBlob}=await sb.storage.from('gesichter').download(mitarbeiter.referenzfoto_pfad);
+    if(!refBlob)return true;
+    const refImg=await createImageBitmap(refBlob);
+    const refCanvas=document.createElement('canvas');
+    refCanvas.width=refImg.width;refCanvas.height=refImg.height;
+    refCanvas.getContext('2d').drawImage(refImg,0,0);
+    const refDescriptor=await faceapi.detectSingleFace(refCanvas,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptor();
+    if(!refDescriptor)return true;
+    const snapshot=await macheFotoSnapshot();
+    if(!snapshot)return true;
+    const liveDescriptor=await faceapi.detectSingleFace(snapshot,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptor();
+    if(!liveDescriptor){await speichereVerdaechtig(snapshot,mitarbeiter,0);return true;}
+    const distanz=faceapi.euclideanDistance(refDescriptor.descriptor,liveDescriptor.descriptor);
+    const aehnlichkeit=Math.max(0,1-distanz);
+    if(aehnlichkeit<AEHNLICHKEIT_SCHWELLE){
+      await speichereVerdaechtig(snapshot,mitarbeiter,aehnlichkeit);
+    }else{
+      await sb.from('gesichts_log').insert({mitarbeiter_id:mitarbeiter.id,aehnlichkeit:aehnlichkeit,auffaellig:false,geraete_id:getDeviceId()});
+    }
+    return true;
+  }catch(e){console.warn('Gesichtserkennung Fehler:',e);return true;}
+}
+
+async function macheFotoSnapshot(){
+  return new Promise(async(resolve)=>{
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{width:320,height:240,facingMode:'user'}});
+      const video=document.createElement('video');
+      video.srcObject=stream;video.autoplay=true;video.playsInline=true;
+      video.style.position='fixed';video.style.opacity='0';video.style.pointerEvents='none';
+      document.body.appendChild(video);
+      video.onloadeddata=()=>{
+        setTimeout(()=>{
+          const canvas=document.createElement('canvas');
+          canvas.width=320;canvas.height=240;
+          canvas.getContext('2d').drawImage(video,0,0);
+          stream.getTracks().forEach(t=>t.stop());
+          document.body.removeChild(video);
+          resolve(canvas);
+        },800);
+      };
+    }catch(e){resolve(null);}
+  });
+}
+
+async function speichereVerdaechtig(canvas,mitarbeiter,aehnlichkeit){
+  try{
+    const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.8));
+    const dateiname=`${mitarbeiter.id}_${Date.now()}.jpg`;
+    const{error:upErr}=await sb.storage.from('verdaechtig').upload(dateiname,blob,{contentType:'image/jpeg'});
+    await sb.from('gesichts_log').insert({mitarbeiter_id:mitarbeiter.id,foto_pfad:upErr?null:dateiname,aehnlichkeit:aehnlichkeit,auffaellig:true,geraete_id:getDeviceId()});
+    await fetch(`${SUPA_URL}/functions/v1/gesicht-alert`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPA_KEY}`},
+      body:JSON.stringify({mitarbeiter_id:mitarbeiter.id,name:mitarbeiter.name,aehnlichkeit:aehnlichkeit,foto_pfad:upErr?null:dateiname,geraete_id:getDeviceId()})
+    });
+  }catch(e){console.warn('Verdächtig-Speicherung Fehler:',e);}
+}
+
+async function uploadReferenzfoto(maId,maName){
+  const input=document.createElement('input');
+  input.type='file';input.accept='image/jpeg,image/png,image/webp';
+  input.onchange=async()=>{
+    const file=input.files[0];if(!file)return;
+    const{data:altMa}=await sbAdmin.from('mitarbeiter').select('referenzfoto_pfad').eq('id',maId);
+    const alterPfad=altMa?.[0]?.referenzfoto_pfad;
+    if(alterPfad){await sb.storage.from('gesichter').remove([alterPfad]);}
+    const dateiname=`${maId}_ref.jpg`;
+    const{error}=await sb.storage.from('gesichter').upload(dateiname,file,{upsert:true,contentType:file.type});
+    if(error){toast('⚠️ Upload fehlgeschlagen');return;}
+    await sbAdmin.from('mitarbeiter').update({referenzfoto_pfad:dateiname}).eq('id',maId);
+    toast('✓ Referenzfoto gespeichert für '+maName);
+    await loadMitarbeiterList();
+  };
+  input.click();
+}
+  // UTILS
 function dl(csv,filename){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));a.download=filename;a.click();}
 function toast(msg,dur=2500){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),dur);}
 
